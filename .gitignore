@@ -1,0 +1,6 @@
+# 不进仓库的东西
+dist/
+node_modules/
+.check-*.png
+*.log
+.DS_Store

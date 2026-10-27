@@ -1,0 +1,53 @@
+{
+  "name": "dsh-fish-pet",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "A big fat fish desktop pet for the DSH Web UI: it greets you when the app opens, talks when poked, and can be dragged anywhere.",
+  "engines": {
+    "dsh": ">=0.2.1-rc.3"
+  },
+  "author": "yvzuojianlianzi",
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "desktop-pet",
+    "widget"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yvzuojianlianzi/dsh-fish-pet.git"
+  },
+  "homepage": "https://github.com/yvzuojianlianzi/dsh-fish-pet#readme",
+  "license": "MIT",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.png"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.png",
+    "art/pet.webp",
+    "art/source.png",
+    "README.md",
+    "SHARE.md",
+    "NOTICE.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": ["slots"],
+      "external": ["react"]
+    }
+  }
+}
