@@ -16,9 +16,13 @@ window.__ModuleLoader__.load({
     const { useCallback, useEffect, useRef, useState } = React
 
     const NS = 'fish-pet'
+    // Shown in the hover tooltip so you can tell which build the page runs.
+    const BUILD = '0.3.1'
     const PET_IMG = '__PET_IMG__'
 
-    const KEY_POS = 'dsh-fish-pet:pos'
+    // v3: the default corner moved back to the bottom-left, so an old saved
+    // spot must not keep the pet up in the top-right.
+    const KEY_POS = 'dsh-fish-pet:pos:3'
     const KEY_PREFS = 'dsh-fish-pet:prefs'
 
     const ZH = {
@@ -39,6 +43,8 @@ window.__ModuleLoader__.load({
       'poke.wake': '唔……我醒着呢。',
       'poke.back': '我又游回来了。',
       'poke.dizzy': '转晕了……别这样。',
+      'peek.found': '被发现了。',
+      'peek.hint': '点一下，我出来',
       'idle.1': '……',
       'idle.2': '水面挺安静的。',
       'idle.3': '你刚才那行，写完了吗？',
@@ -73,6 +79,8 @@ window.__ModuleLoader__.load({
       'poke.wake': 'Hm... I am awake.',
       'poke.back': 'I swam back.',
       'poke.dizzy': 'Dizzy... easy.',
+      'peek.found': 'You found me.',
+      'peek.hint': 'Click, I will come out',
       'idle.1': '...',
       'idle.2': 'Quiet water.',
       'idle.3': 'Did you finish that line?',
@@ -93,6 +101,9 @@ window.__ModuleLoader__.load({
     const IDLE_KEYS = ['idle.1', 'idle.2', 'idle.3', 'idle.4', 'idle.5', 'idle.6', 'idle.7']
 
     const PET_W = 152
+    const PET_H = Math.round((PET_W * 440) / 397)
+    const CORNER_LEFT = 24
+    const CORNER_BOTTOM = 28
     const TICK_MS = 15000
     const IDLE_NAP_MS = 210000
     const IDLE_TALK_MS = 45000
@@ -124,9 +135,11 @@ window.__ModuleLoader__.load({
     function loadPos() {
       const saved = readJSON(KEY_POS)
       if (!saved || !Number.isFinite(saved.left) || !Number.isFinite(saved.top)) return null
+      // Never restore a position that is mostly off screen: a pet parked at the
+      // edge would look like it disappeared.
       return {
-        left: clamp(saved.left, -40, window.innerWidth - 60),
-        top: clamp(saved.top, 0, window.innerHeight - 60),
+        left: clamp(saved.left, 4, window.innerWidth - 64),
+        top: clamp(saved.top, 4, window.innerHeight - 64),
       }
     }
 
@@ -151,31 +164,37 @@ window.__ModuleLoader__.load({
     }
 
     const CSS = `
-.dfp-root{position:fixed;z-index:40;width:${PET_W}px;pointer-events:none;user-select:none;-webkit-user-select:none;font-family:inherit;line-height:1.5;}
+.dfp-root{position:fixed;z-index:2147483000;width:${PET_W}px;pointer-events:none;user-select:none;-webkit-user-select:none;font-family:inherit;line-height:1.5;}
 .dfp-root[data-hidden="true"]{width:auto;}
+.dfp-root[data-slide="true"]{transition:left .5s cubic-bezier(.33,.9,.32,1),top .5s cubic-bezier(.33,.9,.32,1);}
+.dfp-root[data-lie="true"] .dfp-sway{animation:none;}
+.dfp-root[data-lie="true"] .dfp-shadow{width:118px;margin-left:-59px;opacity:.42;animation:none;}
 .dfp-stage{position:relative;pointer-events:auto;cursor:grab;touch-action:none;}
 .dfp-stage:active{cursor:grabbing;}
 .dfp-sway{animation:dfp-bob 4.6s ease-in-out infinite;will-change:transform;}
 .dfp-root[data-sleep="true"] .dfp-sway{animation-duration:8.5s;}
 .dfp-tilt{transition:transform .25s ease-out;transform-origin:50% 86%;}
-.dfp-flip{transition:transform .3s cubic-bezier(.4,0,.2,1);transform-origin:50% 50%;}
+.dfp-flip{transition:transform .45s cubic-bezier(.34,1.2,.4,1);transform-origin:50% 50%;}
 .dfp-img{display:block;width:${PET_W}px;height:auto;pointer-events:none;-webkit-user-drag:none;
   filter:drop-shadow(0 8px 12px rgba(15,23,42,.22));animation:dfp-arrive .55s cubic-bezier(.2,1.5,.4,1) both;}
 .dfp-root[data-sleep="true"] .dfp-img{filter:drop-shadow(0 8px 12px rgba(15,23,42,.18)) saturate(.86);}
 .dfp-shadow{position:absolute;left:50%;bottom:2px;width:86px;height:13px;margin-left:-43px;border-radius:50%;
   background:radial-gradient(ellipse at center,rgba(15,23,42,.30),rgba(15,23,42,0) 70%);
   animation:dfp-shadow 4.6s ease-in-out infinite;pointer-events:none;}
-.dfp-bubble{position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%);max-width:172px;width:max-content;
-  padding:7px 10px;border-radius:12px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);
-  border:1px solid var(--dsw-alias-border-l1);box-shadow:0 8px 22px rgba(15,23,42,.18);font-size:12px;
+.dfp-bubble{position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%);max-width:190px;width:max-content;
+  padding:8px 11px;border-radius:12px;background:#ffffff;color:#1c2333;
+  border:1px solid rgba(28,40,70,.14);box-shadow:0 10px 26px rgba(15,23,42,.22);font-size:12.5px;
   text-align:left;pointer-events:none;animation:dfp-bubble-in .2s ease-out;z-index:3;}
 .dfp-bubble::after{content:"";position:absolute;left:50%;bottom:-5px;width:9px;height:9px;margin-left:-4px;transform:rotate(45deg);
-  background:var(--dsw-alias-bg-overlay);border-right:1px solid var(--dsw-alias-border-l1);border-bottom:1px solid var(--dsw-alias-border-l1);}
-.dfp-zzz{position:absolute;right:14px;top:16px;color:var(--dsw-alias-label-secondary);font-size:13px;letter-spacing:2px;
-  pointer-events:none;opacity:.9;z-index:2;}
-.dfp-zzz span{display:inline-block;animation:dfp-float 2.6s ease-in-out infinite;}
-.dfp-zzz span:nth-child(2){animation-delay:.35s;font-size:15px;}
-.dfp-zzz span:nth-child(3){animation-delay:.7s;font-size:11px;}
+  background:#ffffff;border-right:1px solid rgba(28,40,70,.14);border-bottom:1px solid rgba(28,40,70,.14);}
+.dfp-zzzbox{position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%);
+  display:flex;align-items:flex-end;gap:1px;padding:3px 11px 5px;border-radius:12px;
+  background:#ffffff;color:#41506b;border:1px solid rgba(28,40,70,.14);
+  box-shadow:0 10px 26px rgba(15,23,42,.22);font-size:14px;letter-spacing:2px;
+  pointer-events:none;z-index:3;animation:dfp-bubble-in .2s ease-out;}
+.dfp-zzzbox span{display:inline-block;animation:dfp-float 2.6s ease-in-out infinite;}
+.dfp-zzzbox span:nth-child(2){animation-delay:.35s;font-size:17px;}
+.dfp-zzzbox span:nth-child(3){animation-delay:.7s;font-size:11px;}
 .dfp-heart{position:absolute;left:50%;top:18%;font-size:14px;color:#ef7ba6;pointer-events:none;z-index:4;
   animation:dfp-heart .85s ease-out forwards;}
 .dfp-menu{position:absolute;left:50%;transform:translateX(-50%);min-width:118px;padding:4px;border-radius:10px;
@@ -187,13 +206,6 @@ window.__ModuleLoader__.load({
   color:var(--dsw-alias-label-primary);white-space:nowrap;text-align:left;transition:background .12s;}
 .dfp-menu button:hover{background:var(--dsw-alias-bg-layer-2);}
 .dfp-menu button:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px;}
-.dfp-chip{all:unset;position:fixed;z-index:40;box-sizing:border-box;display:flex;align-items:center;justify-content:center;
-  width:40px;height:40px;padding:0;border-radius:50%;pointer-events:auto;cursor:pointer;
-  border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-overlay);
-  box-shadow:0 6px 16px rgba(15,23,42,.2);opacity:.62;transition:opacity .15s,transform .15s;}
-.dfp-chip:hover{opacity:1;transform:scale(1.06);}
-.dfp-chip img{width:30px;height:auto;display:block;pointer-events:none;}
-.dfp-chip:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px;}
 @keyframes dfp-bob{0%,100%{transform:translateY(0) rotate(-1.1deg)}50%{transform:translateY(-6px) rotate(1.1deg)}}
 @keyframes dfp-shadow{0%,100%{transform:scaleX(1);opacity:.9}50%{transform:scaleX(.86);opacity:.62}}
 @keyframes dfp-arrive{from{opacity:0;transform:translateY(14px) scale(.86)}to{opacity:1;transform:none}}
@@ -201,10 +213,32 @@ window.__ModuleLoader__.load({
 @keyframes dfp-float{0%,100%{transform:translateY(0);opacity:.35}50%{transform:translateY(-5px);opacity:.95}}
 @keyframes dfp-heart{0%{opacity:0;transform:translate(-50%,0) scale(.6)}25%{opacity:1}100%{opacity:0;transform:translate(calc(-50% + var(--dx)),-34px) scale(1.1)}}
 @media (prefers-reduced-motion: reduce){
-  .dfp-sway,.dfp-shadow,.dfp-img,.dfp-zzz span,.dfp-heart{animation:none !important;}
+  .dfp-sway,.dfp-shadow,.dfp-img,.dfp-zzzbox span,.dfp-heart{animation:none !important;}
   .dfp-flip{transition:none;}
 }
 `
+
+    // Turns a render crash into a visible red strip with the message instead of
+    // a silently empty slot.
+    class PetBoundary extends React.Component {
+      constructor(props) {
+        super(props)
+        this.state = { error: '' }
+      }
+      static getDerivedStateFromError(error) {
+        return { error: String((error && error.message) || error) }
+      }
+      render() {
+        if (!this.state.error) return this.props.children
+        return h('div', {
+          style: {
+            position: 'fixed', top: '34px', left: '50%', transform: 'translateX(-50%)',
+            zIndex: 2147483000, maxWidth: '70vw', background: '#b3261e', color: '#fff',
+            fontSize: '12px', padding: '6px 12px', borderRadius: '8px', fontFamily: 'monospace',
+          },
+        }, 'fish-pet 渲染出错：' + this.state.error)
+      }
+    }
 
     function Pet() {
       const t = useCallback((key) => (locale ? locale.bind(NS)(key) : key), [])
@@ -219,7 +253,8 @@ window.__ModuleLoader__.load({
       const [say, setSay] = useState(null)
       const [sleeping, setSleeping] = useState(false)
       const [chatty, setChatty] = useState(() => readPref('chatty', true))
-      const [hidden, setHidden] = useState(false)
+      const [peek, setPeek] = useState(false)
+      const [slide, setSlide] = useState(false)
       const [menu, setMenu] = useState(null)
       const [tilt, setTilt] = useState(0)
       const [hearts, setHearts] = useState([])
@@ -229,14 +264,17 @@ window.__ModuleLoader__.load({
       const stageRef = useRef(null)
       const dragRef = useRef(null)
       const sayTimer = useRef(0)
+      const slideTimer = useRef(0)
       const lastTouch = useRef(Date.now())
       const pokeCount = useRef(0)
       const heartId = useRef(0)
       const sleepingRef = useRef(false)
+      const peekRef = useRef(false)
       const chattyRef = useRef(chatty)
       const posRef = useRef(pos)
 
       useEffect(() => { sleepingRef.current = sleeping }, [sleeping])
+      useEffect(() => { peekRef.current = peek }, [peek])
       useEffect(() => { chattyRef.current = chatty }, [chatty])
       useEffect(() => { posRef.current = pos }, [pos])
 
@@ -266,6 +304,7 @@ window.__ModuleLoader__.load({
       // Idle life: mutter now and then, nap when nobody is around.
       useEffect(() => {
         const timer = window.setInterval(() => {
+          if (peekRef.current) return
           const quietFor = Date.now() - lastTouch.current
           if (quietFor > IDLE_NAP_MS) {
             if (!sleepingRef.current) setSleeping(true)
@@ -278,7 +317,10 @@ window.__ModuleLoader__.load({
         return () => window.clearInterval(timer)
       }, [sayLine, t])
 
-      useEffect(() => () => window.clearTimeout(sayTimer.current), [])
+      useEffect(() => () => {
+        window.clearTimeout(sayTimer.current)
+        window.clearTimeout(slideTimer.current)
+      }, [])
 
       // Keep the pet on screen when the window shrinks.
       useEffect(() => {
@@ -322,6 +364,11 @@ window.__ModuleLoader__.load({
       const poke = useCallback(() => {
         lastTouch.current = Date.now()
         setMenu(null)
+        if (peek) {
+          slideTo(() => setPeek(false))
+          sayLine(t('peek.found'), 3200)
+          return
+        }
         if (sleepingRef.current) {
           setSleeping(false)
           sayLine(t('poke.wake'))
@@ -340,7 +387,7 @@ window.__ModuleLoader__.load({
         spawnHearts()
         if (pokeCount.current % 6 === 0) sayLine(t('poke.9'))
         else sayLine(t(pick(POKE_KEYS)))
-      }, [bounce, sayLine, spawnHearts, t])
+      }, [bounce, peek, sayLine, spawnHearts, t])
 
       const toggleChatty = () => {
         const next = !chatty
@@ -353,17 +400,40 @@ window.__ModuleLoader__.load({
         const next = !sleeping
         setSleeping(next)
         lastTouch.current = Date.now()
-        if (!next) sayLine(t('poke.wake'), 2600)
+        if (next) setSay(null)
+        else sayLine(t('poke.wake'), 2600)
+      }
+
+      const slideTo = (apply) => {
+        setSlide(true)
+        apply()
+        window.clearTimeout(slideTimer.current)
+        slideTimer.current = window.setTimeout(() => setSlide(false), 620)
       }
 
       const resetCorner = () => {
-        writeJSON(KEY_POS, null)
-        setPos(null)
+        const next = {
+          left: CORNER_LEFT,
+          top: Math.max(8, window.innerHeight - PET_H - CORNER_BOTTOM),
+        }
+        slideTo(() => {
+          setPeek(false)
+          setPos(next)
+        })
+        writeJSON(KEY_POS, next)
         sayLine(t('poke.back'), 2600)
+      }
+
+      const hideToPeek = () => {
+        setMenu(null)
+        setSay(null)
+        setSleeping(false)
+        slideTo(() => setPeek(true))
       }
 
       const openMenu = (event) => {
         event.preventDefault()
+        if (peek) return
         const rect = stageRef.current ? stageRef.current.getBoundingClientRect() : null
         const below = rect ? rect.top < 230 : false
         setMenu({ below })
@@ -372,6 +442,11 @@ window.__ModuleLoader__.load({
 
       const onPointerDown = (event) => {
         if (event.button !== 0 || !stageRef.current) return
+        // A click on the context menu is a menu click, not a drag: capturing the
+        // pointer here would retarget the following `click` to the stage and the
+        // menu button would never fire.
+        const target = event.target
+        if (target && target.closest && target.closest('.dfp-menu')) return
         lastTouch.current = Date.now()
         if (sleepingRef.current) setSleeping(false)
         const rect = rootRef.current.getBoundingClientRect()
@@ -380,6 +455,7 @@ window.__ModuleLoader__.load({
       }
 
       const onPointerMove = (event) => {
+        if (peek) return
         const drag = dragRef.current
         if (!drag) {
           const el = stageRef.current
@@ -405,6 +481,11 @@ window.__ModuleLoader__.load({
         if (!drag) return
         try { event.currentTarget.releasePointerCapture(event.pointerId) } catch (err) { /* ignore */ }
         lastTouch.current = Date.now()
+        if (peek) {
+          slideTo(() => setPeek(false))
+          sayLine(t('peek.found'), 3200)
+          return
+        }
         if (drag.moved) {
           setPos((current) => {
             if (current) writeJSON(KEY_POS, current)
@@ -422,69 +503,71 @@ window.__ModuleLoader__.load({
         }
       }
 
-      const restingStyle = pos ? { left: pos.left, top: pos.top } : { left: 18, bottom: 96 }
+      // Default spot: the bottom-left corner, next to the sidebar.
+      const restingStyle = pos
+        ? { left: pos.left, top: pos.top }
+        : { left: CORNER_LEFT, bottom: CORNER_BOTTOM }
       // The drawing faces slightly left; on the left half of the window it
       // turns around so it always looks toward the middle of the page.
-      const anchorLeft = pos ? pos.left : 18
+      const anchorLeft = pos ? pos.left : CORNER_LEFT
       const facingRight = anchorLeft + PET_W / 2 < vpW / 2
-      const flip = { transform: facingRight ? 'scaleX(-1)' : 'scaleX(1)' }
+      // Peeking: slide to the nearer screen edge and leave half a body out.
+      const peekLeft = facingRight ? -PET_W * 0.46 : vpW - PET_W * 0.54
+      const rootStyle = peek
+        ? (pos ? { left: peekLeft, top: pos.top } : { left: peekLeft, bottom: CORNER_BOTTOM })
+        : restingStyle
+      const flip = {
+        transform: (sleeping ? 'translateY(26px) rotate(-82deg) ' : '')
+          + (facingRight ? 'scaleX(-1)' : 'scaleX(1)'),
+      }
 
-      const body = hidden
-        ? h('button', {
-          type: 'button',
-          className: 'dfp-chip',
-          style: restingStyle,
-          title: t('pet.label'),
-          'aria-label': t('pet.label'),
-          onClick: () => {
-            setHidden(false)
-            lastTouch.current = Date.now()
-            sayLine(t('poke.back'), 3000)
-          },
-        }, h('img', { src: PET_IMG, alt: '', draggable: false, style: flip }))
-        : h('div', {
-          ref: rootRef,
-          className: 'dfp-root',
-          style: restingStyle,
-          'data-sleep': sleeping ? 'true' : 'false',
-        },
-        say ? h('div', { className: 'dfp-bubble', key: say.id }, say.text) : null,
-        h('div', {
-          ref: stageRef,
-          className: 'dfp-stage',
-          role: 'button',
-          tabIndex: 0,
-          'aria-label': t('pet.label'),
-          onPointerDown,
-          onPointerMove,
-          onPointerLeave: () => setTilt(0),
-          onPointerUp,
-          onPointerCancel: () => { dragRef.current = null },
-          onContextMenu: openMenu,
-          onKeyDown,
-        },
-        h('div', { className: 'dfp-sway' },
-          h('div', { className: 'dfp-tilt', style: { transform: 'rotate(' + tilt.toFixed(2) + 'deg)' } },
-            h('div', { className: 'dfp-flip', style: flip },
-              h('img', { className: 'dfp-img', src: PET_IMG, alt: '', draggable: false }),
-            ),
+      const body = h('div', {
+        ref: rootRef,
+        className: 'dfp-root',
+        style: rootStyle,
+        'data-sleep': sleeping ? 'true' : 'false',
+        'data-lie': sleeping ? 'true' : 'false',
+        'data-slide': slide ? 'true' : 'false',
+        'data-peek': peek ? 'true' : 'false',
+      },
+      say && !peek ? h('div', { className: 'dfp-bubble', key: say.id }, say.text) : null,
+      h('div', {
+        ref: stageRef,
+        className: 'dfp-stage',
+        role: 'button',
+        tabIndex: 0,
+        'aria-label': t('pet.label'),
+        title: peek ? t('peek.hint') : t('pet.label') + ' · v' + BUILD,
+        onPointerDown,
+        onPointerMove,
+        onPointerLeave: () => setTilt(0),
+        onPointerUp,
+        onPointerCancel: () => { dragRef.current = null },
+        onContextMenu: openMenu,
+        onKeyDown,
+      },
+      h('div', { className: 'dfp-sway' },
+        h('div', { className: 'dfp-tilt', style: { transform: 'rotate(' + tilt.toFixed(2) + 'deg)' } },
+          h('div', { className: 'dfp-flip', style: flip },
+            h('img', { className: 'dfp-img', src: PET_IMG, alt: '', draggable: false }),
           ),
         ),
-        h('div', { className: 'dfp-shadow' }),
-        sleeping ? h('div', { className: 'dfp-zzz' }, h('span', null, 'z'), h('span', null, 'z'), h('span', null, 'z')) : null,
-        hearts.map((item) => h('span', {
-          key: item.id,
-          className: 'dfp-heart',
-          style: { '--dx': item.dx + 'px' },
-        }, '♥')),
-        menu ? h('div', { className: 'dfp-menu', 'data-below': menu.below ? 'true' : 'false' },
-          h('button', { type: 'button', onClick: () => { setMenu(null); lastTouch.current = Date.now(); sayLine(t(pick(POKE_KEYS))) } }, t('menu.talk')),
-          h('button', { type: 'button', onClick: () => { setMenu(null); toggleChatty() } }, t(chatty ? 'menu.chattyOff' : 'menu.chattyOn')),
-          h('button', { type: 'button', onClick: () => { setMenu(null); toggleSleep() } }, t(sleeping ? 'menu.wake' : 'menu.sleep')),
-          h('button', { type: 'button', onClick: () => { setMenu(null); resetCorner() } }, t('menu.corner')),
-          h('button', { type: 'button', onClick: () => { setMenu(null); setHidden(true) } }, t('menu.hide')),
-        ) : null,
-        ),
+      ),
+      h('div', { className: 'dfp-shadow' }),
+      sleeping ? h('div', { className: 'dfp-zzzbox' }, h('span', null, 'z'), h('span', null, 'z'), h('span', null, 'z')) : null,
+      hearts.map((item) => h('span', {
+        key: item.id,
+        className: 'dfp-heart',
+        style: { '--dx': item.dx + 'px' },
+      }, '♥')),
+      menu ? h('div', { className: 'dfp-menu', 'data-below': menu.below ? 'true' : 'false' },
+        h('button', { type: 'button', onClick: () => { setMenu(null); lastTouch.current = Date.now(); sayLine(t(pick(POKE_KEYS)), 6000) } }, t('menu.talk')),
+        h('button', { type: 'button', onClick: () => { setMenu(null); toggleChatty() } }, t(chatty ? 'menu.chattyOff' : 'menu.chattyOn')),
+        h('button', { type: 'button', onClick: () => { setMenu(null); toggleSleep() } }, t(sleeping ? 'menu.wake' : 'menu.sleep')),
+        h('button', { type: 'button', onClick: () => { setMenu(null); resetCorner() } }, t('menu.corner')),
+        h('button', { type: 'button', onClick: () => hideToPeek() }, t('menu.hide')),
+      ) : null,
+      ),
       )
 
       return h(React.Fragment, null, h('style', { key: 'dfp-css' }, CSS), body)
@@ -504,7 +587,7 @@ window.__ModuleLoader__.load({
           id: 'fish-pet',
           order: 40,
           label: () => (locale ? locale.bind(NS)('pet.label') : 'fish'),
-        }, Pet))
+        }, () => h(PetBoundary, null, h(Pet))))
       },
     }
   },
