@@ -1,6 +1,6 @@
 {
   "name": "dsh-fish-pet",
-  "version": "0.2.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "description": "A big fat fish desktop pet for the DSH Web UI: it greets you when the app opens, talks when poked, and can be dragged anywhere.",
